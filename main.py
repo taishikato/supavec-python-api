@@ -12,13 +12,15 @@ app = modal.App(name="supavec-api", image=crawl4ai_image)
 
 @app.function()
 @modal.web_endpoint(method="POST")
-async def scrape_url():
+async def scrape_url(data: dict):
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+
+    url = data.get("url")
 
     try:
         async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
             result = await crawler.arun(
-                "https://www.supavec.com",
+                url,
                 config=CrawlerRunConfig(
                     cache_mode=CacheMode.BYPASS,
                     page_timeout=80000,
@@ -28,8 +30,3 @@ async def scrape_url():
             return {"markdown": result.markdown}
     except Exception as e:
         return {"error": str(e)}
-
-
-# @app.local_entrypoint()
-# def main():
-#     scrape_url.remote()
