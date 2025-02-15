@@ -1,5 +1,6 @@
 import modal
 from pydantic import BaseModel
+from fastapi import Request, HTTPException
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -17,10 +18,25 @@ class ScrapeRequest(BaseModel):
 
 @app.function()
 @modal.web_endpoint(method="POST")
-async def scrape_url(data: ScrapeRequest):
+async def scrape_url(request: Request, data: ScrapeRequest):
+    import uuid
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 
     try:
+        auth_header = request.headers.get("authorization")
+        if not auth_header:
+            raise HTTPException(
+                status_code=401, detail="Authorization header is required"
+            )
+
+        try:
+            uuid.UUID(auth_header)
+        except ValueError:
+            raise HTTPException(
+                status_code=401, detail="Invalid authorization header format"
+            )
+        token = auth_header
+
         async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
             result = await crawler.arun(
                 data.url,
@@ -31,5 +47,7 @@ async def scrape_url(data: ScrapeRequest):
             )
 
             return {"markdown": result.markdown}
+    except HTTPException as e:
+        return {"error": e.detail, "status_code": e.status_code}
     except Exception as e:
         return {"error": str(e)}
