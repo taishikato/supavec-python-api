@@ -1,4 +1,5 @@
 import modal
+from pydantic import BaseModel
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -10,17 +11,19 @@ crawl4ai_image = (
 app = modal.App(name="supavec-api", image=crawl4ai_image)
 
 
+class ScrapeRequest(BaseModel):
+    url: str
+
+
 @app.function()
 @modal.web_endpoint(method="POST")
-async def scrape_url(data: dict):
+async def scrape_url(data: ScrapeRequest):
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-
-    url = data.get("url")
 
     try:
         async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
             result = await crawler.arun(
-                url,
+                data.url,
                 config=CrawlerRunConfig(
                     cache_mode=CacheMode.BYPASS,
                     page_timeout=80000,
