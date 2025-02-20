@@ -3,6 +3,8 @@ import os
 from pydantic import BaseModel
 from fastapi import Request, HTTPException
 from supabase import create_client, Client
+import uuid
+from io import BytesIO
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -71,7 +73,28 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 ),
             )
 
-            return {"markdown": result.markdown}
+            # Generate a unique file ID and name
+            file_id = str(uuid.uuid4())
+            file_name = f"{file_id}.txt"
+
+            # Convert markdown content to bytes
+            markdown_bytes = result.markdown.encode("utf-8")
+
+            # Upload to Supabase Storage
+            storage_response = supabase.storage.from_("user-documents").upload(
+                path=f"{team_id}/{file_name}",
+                file=markdown_bytes,
+                file_options={"content-type": "text/plain"},
+            )
+
+            if hasattr(storage_response, "error") and storage_response.error:
+                raise Exception(f"Storage upload failed: {storage_response.error}")
+
+            return {
+                "markdown": result.markdown,
+                "file_id": file_id,
+                "storage_path": f"{team_id}/{file_name}",
+            }
     except HTTPException as e:
         return {"error": e.detail, "status_code": e.status_code}
     except Exception as e:
