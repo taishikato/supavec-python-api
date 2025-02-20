@@ -20,6 +20,8 @@ app = modal.App(
 
 class ScrapeRequest(BaseModel):
     url: str
+    chunk_size: int | None = 1500
+    chunk_overlap: int | None = 20
 
 
 @app.function()
