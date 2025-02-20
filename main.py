@@ -6,12 +6,20 @@ from supabase import create_client, Client
 import uuid
 from io import BytesIO
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import SupabaseVectorStore
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install("crawl4ai==0.4.247")
     .run_commands("crawl4ai-setup")
-    .pip_install("fastapi[standard]", "supabase", "langchain_text_splitters")
+    .pip_install(
+        "fastapi[standard]",
+        "supabase",
+        "langchain_text_splitters",
+        "langchain-openai",
+        "langchain-community",
+    )
 )
 
 app = modal.App(
@@ -100,6 +108,18 @@ async def scrape_url(request: Request, data: ScrapeRequest):
 
             if hasattr(storage_response, "error") and storage_response.error:
                 raise Exception(f"Storage upload failed: {storage_response.error}")
+
+            # Generate and store embeddings
+            embeddings = OpenAIEmbeddings(
+                model="text-embedding-3-small",
+            )
+
+            await SupabaseVectorStore.from_documents(
+                chunks,
+                embeddings,
+                client=supabase,
+                table_name="documents",
+            )
 
             return {
                 "markdown": result.markdown,
