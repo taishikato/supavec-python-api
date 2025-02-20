@@ -1,15 +1,21 @@
 import modal
+import os
 from pydantic import BaseModel
 from fastapi import Request, HTTPException
+from supabase import create_client, Client
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install("crawl4ai==0.4.247")
     .run_commands("crawl4ai-setup")
-    .pip_install("fastapi[standard]")
+    .pip_install("fastapi[standard]", "supabase")
 )
 
-app = modal.App(name="supavec-api", image=crawl4ai_image)
+app = modal.App(
+    name="supavec-api",
+    image=crawl4ai_image,
+    secrets=[modal.Secret.from_name("supavec")],
+)
 
 
 class ScrapeRequest(BaseModel):
@@ -21,6 +27,10 @@ class ScrapeRequest(BaseModel):
 async def scrape_url(request: Request, data: ScrapeRequest):
     import uuid
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     try:
         auth_header = request.headers.get("authorization")
@@ -35,7 +45,14 @@ async def scrape_url(request: Request, data: ScrapeRequest):
             raise HTTPException(
                 status_code=401, detail="Invalid authorization header format"
             )
-        token = auth_header
+
+        # Validate API key with Supabase
+        response = (
+            supabase.table("api_keys").select("*").eq("api_key", auth_header).execute()
+        )
+
+        if not response.data:
+            raise HTTPException(status_code=401, detail="Invalid API key")
 
         async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
             result = await crawler.arun(
