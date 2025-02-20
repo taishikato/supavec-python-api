@@ -48,7 +48,10 @@ async def scrape_url(request: Request, data: ScrapeRequest):
 
         # Validate API key with Supabase
         response = (
-            supabase.table("api_keys").select("*").eq("api_key", auth_header).execute()
+            supabase.table("api_keys")
+            .select("api_key")
+            .eq("api_key", auth_header)
+            .execute()
         )
 
         if not response.data:
