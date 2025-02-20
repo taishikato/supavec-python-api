@@ -3,8 +3,6 @@ import os
 from pydantic import BaseModel
 from fastapi import Request, HTTPException
 from supabase import create_client, Client
-import uuid
-from io import BytesIO
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
@@ -33,6 +31,21 @@ class ScrapeRequest(BaseModel):
     url: str
     chunk_size: int | None = 1500
     chunk_overlap: int | None = 20
+
+
+@app.function()
+async def log_api_usage(usage_data: dict):
+    """Asynchronous function to log API usage to Supabase."""
+    SUPABASE_URL = os.environ.get("SUPABASE_URL")
+    SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    try:
+        usage_response = supabase.table("api_usage").insert(usage_data).execute()
+        if hasattr(usage_response, "error") and usage_response.error:
+            print(f"Warning: Failed to log API usage: {usage_response.error}")
+    except Exception as e:
+        print(f"Error logging API usage: {str(e)}")
 
 
 @app.function()
@@ -82,11 +95,9 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 ),
             )
 
-            # Generate a unique file ID and name
             file_id = str(uuid.uuid4())
             file_name = f"{file_id}.txt"
 
-            # Split text into chunks using LangChain
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=data.chunk_size, chunk_overlap=data.chunk_overlap
             )
@@ -96,10 +107,8 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 metadatas=[{"source": data.url, "file_id": file_id}],
             )
 
-            # Convert markdown content to bytes
             markdown_bytes = result.markdown.encode("utf-8")
 
-            # Upload to Supabase Storage
             storage_response = supabase.storage.from_("user-documents").upload(
                 path=f"{team_id}/{file_name}",
                 file=markdown_bytes,
@@ -109,7 +118,6 @@ async def scrape_url(request: Request, data: ScrapeRequest):
             if hasattr(storage_response, "error") and storage_response.error:
                 raise Exception(f"Storage upload failed: {storage_response.error}")
 
-            # Generate and store embeddings
             embeddings = OpenAIEmbeddings(
                 model="text-embedding-3-small",
             )
@@ -121,7 +129,21 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 table_name="documents",
             )
 
-            return {
+            # Store file data in Supabase database
+            file_data = {
+                "file_id": file_id,
+                "type": "web_scrape",
+                "file_name": file_name,
+                "team_id": team_id,
+                "storage_path": f"{team_id}/{file_name}",
+            }
+
+            file_response = supabase.table("files").insert(file_data).execute()
+
+            if hasattr(file_response, "error") and file_response.error:
+                raise Exception(f"File data storage failed: {file_response.error}")
+
+            response_data = {
                 "markdown": result.markdown,
                 "chunks": [
                     {"text": chunk.page_content, "metadata": chunk.metadata}
@@ -130,7 +152,43 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 "file_id": file_id,
                 "storage_path": f"{team_id}/{file_name}",
             }
+
+            usage_data = {
+                "user_id": response.data["user_id"],
+                "endpoint": "/web_scrape",
+                "success": True,
+                "error": None,
+            }
+
+            # Spawn logging process asynchronously
+            log_api_usage.spawn(usage_data)
+
+            return response_data
     except HTTPException as e:
+        # Log failed API usage for HTTP exceptions
+        error_usage_data = {
+            "user_id": (
+                response.data["user_id"]
+                if "response" in locals() and response.data
+                else None
+            ),
+            "endpoint": "/web_scrape",
+            "success": False,
+            "error": e.detail,
+        }
+        log_api_usage.spawn(error_usage_data)
         return {"error": e.detail, "status_code": e.status_code}
     except Exception as e:
+        # Log failed API usage for general exceptions
+        error_usage_data = {
+            "user_id": (
+                response.data["user_id"]
+                if "response" in locals() and response.data
+                else None
+            ),
+            "endpoint": "/web_scrape",
+            "success": False,
+            "error": str(e),
+        }
+        log_api_usage.spawn(error_usage_data)
         return {"error": str(e)}
