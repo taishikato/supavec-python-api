@@ -5,12 +5,13 @@ from fastapi import Request, HTTPException
 from supabase import create_client, Client
 import uuid
 from io import BytesIO
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
     .pip_install("crawl4ai==0.4.247")
     .run_commands("crawl4ai-setup")
-    .pip_install("fastapi[standard]", "supabase")
+    .pip_install("fastapi[standard]", "supabase", "langchain_text_splitters")
 )
 
 app = modal.App(
@@ -77,6 +78,16 @@ async def scrape_url(request: Request, data: ScrapeRequest):
             file_id = str(uuid.uuid4())
             file_name = f"{file_id}.txt"
 
+            # Split text into chunks using LangChain
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=data.chunk_size, chunk_overlap=data.chunk_overlap
+            )
+
+            chunks = text_splitter.create_documents(
+                texts=[result.markdown],
+                metadatas=[{"source": data.url, "file_id": file_id}],
+            )
+
             # Convert markdown content to bytes
             markdown_bytes = result.markdown.encode("utf-8")
 
@@ -92,6 +103,10 @@ async def scrape_url(request: Request, data: ScrapeRequest):
 
             return {
                 "markdown": result.markdown,
+                "chunks": [
+                    {"text": chunk.page_content, "metadata": chunk.metadata}
+                    for chunk in chunks
+                ],
                 "file_id": file_id,
                 "storage_path": f"{team_id}/{file_name}",
             }
