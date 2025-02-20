@@ -49,13 +49,16 @@ async def scrape_url(request: Request, data: ScrapeRequest):
         # Validate API key with Supabase
         response = (
             supabase.table("api_keys")
-            .select("api_key")
+            .select("team_id, user_id, profiles(email)")
             .eq("api_key", auth_header)
+            .single()
             .execute()
         )
 
-        if not response.data:
+        if not response.data or not response.data.get("team_id"):
             raise HTTPException(status_code=401, detail="Invalid API key")
+
+        team_id = response.data["team_id"]
 
         async with AsyncWebCrawler(config=BrowserConfig(headless=True)) as crawler:
             result = await crawler.arun(
