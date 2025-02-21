@@ -1,11 +1,13 @@
 import modal
 import os
 from pydantic import BaseModel
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, FastAPI
 from supabase import create_client, Client
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import SupabaseVectorStore
+
+web_app = FastAPI()
 
 crawl4ai_image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -48,8 +50,7 @@ async def log_api_usage(usage_data: dict):
         print(f"Error logging API usage: {str(e)}")
 
 
-@app.function()
-@modal.web_endpoint(method="POST", label="web-scrape")
+@web_app.post("/web_scrape")
 async def scrape_url(request: Request, data: ScrapeRequest):
     import uuid
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
@@ -201,3 +202,9 @@ async def scrape_url(request: Request, data: ScrapeRequest):
         }
         log_api_usage.spawn(error_usage_data)
         return {"error": str(e)}
+
+
+@app.function()
+@modal.asgi_app(label="api")
+def fastapi_app():
+    return web_app
