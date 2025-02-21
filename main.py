@@ -41,7 +41,7 @@ async def log_api_usage(usage_data: dict):
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     try:
-        usage_response = supabase.table("api_usage").insert(usage_data).execute()
+        usage_response = supabase.table("api_usage_logs").insert(usage_data).execute()
         if hasattr(usage_response, "error") and usage_response.error:
             print(f"Warning: Failed to log API usage: {usage_response.error}")
     except Exception as e:
@@ -122,12 +122,21 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 model="text-embedding-3-small",
             )
 
-            await SupabaseVectorStore.from_documents(
-                chunks,
-                embeddings,
-                client=supabase,
-                table_name="documents",
-            )
+            # Insert documents directly using Supabase client
+            for chunk in chunks:
+                embedding_vector = await embeddings.aembed_documents(
+                    [chunk.page_content]
+                )
+                document_data = {
+                    "content": chunk.page_content,
+                    "metadata": chunk.metadata,
+                    "embedding": embedding_vector[0],
+                }
+                doc_response = (
+                    supabase.table("documents").insert(document_data).execute()
+                )
+                if hasattr(doc_response, "error") and doc_response.error:
+                    raise Exception(f"Document insertion failed: {doc_response.error}")
 
             # Store file data in Supabase database
             file_data = {
