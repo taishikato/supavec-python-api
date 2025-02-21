@@ -187,7 +187,6 @@ async def scrape_url(request: Request, data: ScrapeRequest):
         log_api_usage.spawn(error_usage_data)
         return {"error": e.detail, "status_code": e.status_code}
     except Exception as e:
-        # Log failed API usage for general exceptions
         error_usage_data = {
             "user_id": (
                 response.data["user_id"]
@@ -199,7 +198,7 @@ async def scrape_url(request: Request, data: ScrapeRequest):
             "error": str(e),
         }
         log_api_usage.spawn(error_usage_data)
-        return {"error": str(e)}
+        return {"error": str(e), "status_code": 500}
 
 
 @app.function()
