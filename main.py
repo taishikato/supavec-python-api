@@ -5,7 +5,6 @@ from fastapi import Request, HTTPException, FastAPI
 from supabase import create_client, Client
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import SupabaseVectorStore
 
 web_app = FastAPI()
 
@@ -18,7 +17,6 @@ crawl4ai_image = (
         "supabase",
         "langchain_text_splitters",
         "langchain-openai",
-        "langchain-community",
     )
 )
 
