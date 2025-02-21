@@ -152,13 +152,10 @@ async def scrape_url(request: Request, data: ScrapeRequest):
                 raise Exception(f"File data storage failed: {file_response.error}")
 
             response_data = {
+                "success": True,
                 "markdown": result.markdown,
-                "chunks": [
-                    {"text": chunk.page_content, "metadata": chunk.metadata}
-                    for chunk in chunks
-                ],
+                "message": "Web scrape completed successfully",
                 "file_id": file_id,
-                "storage_path": f"{team_id}/{file_name}",
             }
 
             usage_data = {
