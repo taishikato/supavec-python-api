@@ -23,7 +23,7 @@ crawl4ai_image = (
 app = modal.App(
     name="supavec-api",
     image=crawl4ai_image,
-    secrets=[modal.Secret.from_name("supavec")],
+    secrets=[modal.Secret.from_name("supa-secrets")],
 )
 
 
@@ -49,7 +49,7 @@ async def log_api_usage(usage_data: dict):
 
 
 @app.function()
-@modal.web_endpoint(method="POST")
+@modal.web_endpoint(method="POST", label="web-scrape")
 async def scrape_url(request: Request, data: ScrapeRequest):
     import uuid
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
